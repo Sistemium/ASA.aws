@@ -8,7 +8,7 @@ select aws.publish (
 */
 
 
-create or replace function aws.publish (
+create or replace function aws.SNSPublish (
     @Message text,
     @TargetArn text
 ) returns GUID
@@ -16,7 +16,7 @@ begin
 
     declare @result GUID;
     declare @xml XML;
-    
+
     set @xml = aws.httpPost (
         'http://sns.eu-west-1.amazonaws.com',
         aws.signedQuery (
@@ -37,7 +37,42 @@ begin
     from openxml(@xml,'/*/*') with (
         RequestId GUID '*:RequestId'
     ) where RequestId is not null;
-    
+
     return @result;
-    
+
+end;
+
+create or replace function aws.SNSCreatePlatformEndpoint (
+    @PlatformApplicationArn text,
+    @CustomUserData text,
+    @Token text
+) returns text
+begin
+
+    declare @result text;
+    declare @xml XML;
+
+    set @xml = aws.httpPost (
+        'http://sns.eu-west-1.amazonaws.com',
+        aws.signedQuery (
+            util.getUserOption('AWSAccessKeyId'),
+            util.getUserOption('AWSSecret'),
+            aws.queryData ('CreatePlatformEndpoint', string(
+                    'CustomUserData=',@CustomUserData,
+                    '&PlatformApplicationArn=',@PlatformApplicationArn,
+                    '&Token=',@Token
+                ),
+                'HmacSHA256', 2, current utc timestamp, '2010-03-31'
+            ),
+            '/','POST','sns.eu-west-1.amazonaws.com'
+        )
+    );
+
+    select EndpointArn into @result
+    from openxml(@xml,'/*/*') with (
+        EndpointArn text '*:EndpointArn'
+    ) where EndpointArn is not null;
+
+    return @result;
+
 end;
