@@ -6,7 +6,7 @@ call util.setuseroption('AWSSecret','');
 commit;
 
 
-create or replace function aws.httpPost (
+create or replace function aws.httpPostProxy (
     url text,
     request text
 )
@@ -14,6 +14,24 @@ RETURNS TEXT
     URL '!url'
     TYPE 'http:post:application/x-www-form-urlencoded'
 ;
+
+create or replace function aws.httpPost (
+    url text,
+    request text
+) RETURNS TEXT
+begin
+
+    declare @result text;
+
+    set @result = aws.httpPostProxy (url, request);
+
+    return @result;
+
+exception WHEN OTHERS THEN
+
+    return null;
+
+end;
 
 
 create or replace function aws.signedQuery (
@@ -27,9 +45,9 @@ create or replace function aws.signedQuery (
 begin
 
     declare @result text;
-    
+
     declare @StringToSign text;
-    
+
     set @StringToSign = string (
         @verb, '\n',
         @host, '\n',
@@ -37,7 +55,7 @@ begin
         'AWSAccessKeyId=', @AWSAccessKeyId,
         '&', @query
     );
-    
+
     return string (
         'AWSAccessKeyId=', @AWSAccessKeyId,
         '&', @query,
@@ -45,7 +63,7 @@ begin
             util.hmac (@AWSSecret,@StringToSign,regexp_substr(@query,'(?<=SignatureMethod=Hmac)[^&]*'))
         )))
     );
-    
+
 end;
 
 
@@ -60,7 +78,7 @@ create or replace function aws.queryData (
 begin
 
     declare @result text;
-    
+
     set @result = string(
         'Action=', @Action,
         '&SignatureMethod=', @SignatureMethod,
@@ -69,7 +87,7 @@ begin
         '&Version=', @Version,
         if @params <> '' then '&'+@params endif
     );
-    
+
     set @result = (
         select list(string(var,'=',util.urlencode(val)),'&' order by var)
         from openstring (value @result)
@@ -77,7 +95,7 @@ begin
         option ( DELIMITED BY '=' ROW DELIMITED BY '&')
         as vars
     );
-    
+
     return @result;
-    
+
 end;
