@@ -2,14 +2,14 @@ create or replace function aws.metricDataMemberDimension (
     @name STRING,
     @value int,
     @n int default 1,
-    @memberN int default 1,
+    @memberN int default 1
 ) returns text
 begin
 
     return string(
         '&MetricData.member.', @memberN, '.Dimensions.member.', @n, '.Name=', @name,
         '&MetricData.member.', @memberN, '.Dimensions.member.', @n, '.Value=', @value
-    ;
+    );
     
 end;
 
@@ -79,3 +79,46 @@ begin
     );
     
 end;
+
+ALTER FUNCTION "aws"."putMetricDataOld" (
+    @name STRING,
+    @value int,
+    @ts timestamp default now (),
+    @unit varchar(16) default 'Count',
+    @ns varchar(32) default 'ASA Metrics'
+) returns GUID
+begin
+
+    declare @result GUID;
+    declare @xml XML;
+    
+    set @xml = (
+        select aws.httpPost (
+            'http://monitoring.eu-west-1.amazonaws.com',
+            aws.signedQuery (
+                util.getUserOption('AWSAccessKeyId'),
+                util.getUserOption('AWSSecret'),
+                aws.queryData (
+                    'PutMetricData',
+                    'Namespace=' + @ns
+                    + '&MetricData.member.1.MetricName=' + @name
+                    + '&MetricData.member.1.Unit=' + @unit
+                    + '&MetricData.member.1.Value=' + string(@value)
+                    + '&MetricData.member.1.Timestamp='+util.tzTimestamp(@ts)
+                    + '&MetricData.member.1.Dimensions.member.1.Name=Server'
+                    + '&MetricData.member.1.Dimensions.member.1.Value=' + property('servername')
+                    + '&MetricData.member.1.Dimensions.member.2.Name=Database'
+                    + '&MetricData.member.1.Dimensions.member.2.Value=' + current database
+                )
+            )
+        )
+    );
+
+    select RequestId into @result
+    from openxml(@xml,'/*/*') with (
+        RequestId GUID '*:RequestId'
+    );
+    
+    return @result;
+    
+end
